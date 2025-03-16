@@ -1,45 +1,132 @@
+
+
+def process_demonstration_data(demo_data: dict) -> list[dict]:
+    """
+    Process the demonstration data and return an ordered list of steps.
+    
+    Each step is a dict containing:
+        - wait: time in milliseconds (end_timestamp - start_timestamp)
+        - action_type: type of action (e.g., 'url_change', 'click')
+        - action_details: all the details from the snapshot's action
+        - before: before state details
+        - after: after state details
+    """
+    steps = []
+    for snapshot in demo_data["snapshots"]:
+        wait_duration = snapshot["end_timestamp"] - snapshot["start_timestamp"]
+        step = {
+            "wait": wait_duration,
+            "action_type": snapshot["action"]["type"],
+            "action_details": snapshot["action"],
+            "before": snapshot["before_state"],
+            "after": snapshot["after_state"]
+        }
+        steps.append(step)
+    
+    return steps
+
+def map_action_to_playwright(step: dict) -> str:
+    """
+    Use an LLM to generate a Playwright code snippet for a single action step.
+    
+    The prompt includes:
+        - The before state (which could include a screenshot and HTML/metadata)
+        - The action details (like the type, URL, selector, etc.)
+        - The after state
+    This helps the LLM determine what code to generate.
+    
+    Note: Passing images (like screenshots in base64) may be challenging. In practice,
+        you might preprocess the image (e.g., run OCR or extract key features) and pass
+        only textual descriptions to the LLM.
+    """
+    prompt = (
+        "Generate a Playwright code snippet for the following action. "
+        "Based on the 'before' and 'after' state, decide the proper command.\n\n"
+        f"Before State: {step['before']}\n\n"
+        f"Action Details: {step['action_details']}\n\n"
+        f"After State: {step['after']}\n\n"
+        "Write only the Python code snippet that performs this action."
+    )
+    code_snippet = llm_call(prompt)
+    return code_snippet
+
+def llm_call(prompt: str) -> str:
+    return "LLM response"
+
+
 def generate_script(demonstrations: list[dict]) -> str:
     """
     :args:
-        demonstrations: a list of demonstration data, each containing user actions
-            (clicks, typing, scrolling) and the textual descriptions of these actions.
-
+    demonstrations: a list of demonstration data, defined above
+    
     :desc:
-        This function consumes demonstration data and produces a Python Playwright script
-        in string form. The script will replicate the same sequence of actions the user
-        performed, dynamically handling the changing DOM after each interaction.
-
-        Core Logic (Pseudo Code, Not Actual Python):
-        1. Initialize an empty sequence of 'script steps'.
-        2. For each demonstration in 'demonstrations':
-            a. Decompose it into step-by-step user actions (e.g., "click item X", "type this text").
-            b. For each action:
-                i. Obtain the latest page DOM at this moment (in an actual implementation, we need to simulate the steps in real-time).
-                ii. Provide the DOM plus the user instruction to an LLM-based 
-                    mechanism that locates the relevant element or approach (for example, a
-                    selector like "button:has-text('Close')").
-                iii. Append a line of pseudo-script to 'script steps' corresponding to the
-                    identified action (for example, "page.click('button.close-modal')").
-                iv. Include any waiting logic if needed (like waiting for the modal to appear
-                    before clicking).
-                v. After the action is performed (in practice), capture or assume the new DOM
-                    state for subsequent steps.
-        3. Once all actions are processed, wrap 'script steps' with standard boilerplate for
-            opening a browser, creating a page, and closing the browser.
-        4. Convert this sequence of steps into a final string that represents the entire
-            Playwright script.
-
+    consumes the demonstration data and uses LLM calls to convert it into a
+    python playwright script. challenges: how to make sure its robust
+    and reliable? 
+    
     :returns:
-        A string that (in a real system) would be a valid Python script using Playwright to
-        replicate the user's demonstrated actions, including logic to adapt to DOM changes
-        after each step.
+    a python script
     """
-    # 1) Parse demonstrations into step-by-step instructions
-    # 2) For each action, figure out how to locate the necessary element in the current DOM
-    # 3) Generate lines of "click", "fill", "scroll", or "wait" instructions
-    # 4) Re-check or re-fetch DOM changes after each action
-    # 5) Accumulate all lines into a script that can be returned as text
+    steps = process_demonstration_data(demonstrations[0])
     
+    # Header: Basic script setup and definitions.
+    header = '''import asyncio
+import os
+import json
+from dotenv import load_dotenv
+from scrapybara import Scrapybara
+from undetected_playwright.async_api import async_playwright
+
+load_dotenv()
+
+async def get_scrapybara_browser():
+    client = Scrapybara(api_key=os.getenv("SCRAPYBARA_API_KEY"))
+    instance = client.start_browser()
+    return instance
+
+async def perform_automation(instance, start_url: str):
+    cdp_url = instance.get_cdp_url().cdp_url
+    async with async_playwright() as p:
+        browser = await p.chromium.connect_over_cdp(cdp_url)
+        page = await browser.new_page()
+        await page.goto(start_url)
     
+        # Automation begin here
+'''
     
-    return 0
+    # Build the automation code: Loop through each step and insert the LLM-generated code.
+    automation_lines = []
+    for step in steps:
+        automation_lines.append(f"        # Wait for {step['wait']} milliseconds")
+        automation_lines.append(f"        await page.wait_for_timeout({step['wait']})")
+        action_code = map_action_to_playwright(step)
+        automation_lines.append(f"        {action_code}")
+        automation_lines.append("        # Optionally add logging or state verification here")
+        automation_lines.append("")  # Blank line for readability
+    automation_code = "\n".join(automation_lines)
+    
+    # Footer: Closing automation, main function and entry point.
+    footer = '''
+        await browser.close()
+
+async def main():
+    print("Starting automation...")
+    instance = await get_scrapybara_browser()
+
+    try:
+        await perform_automation(
+            instance,
+            "https://example.com"  # Replace with the actual start URL from demonstration
+        )
+    finally:
+        instance.stop()
+        print("Browser instance stopped")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+'''
+    # Combine header, automation code, and footer into the final script.
+    full_script = header + automation_code + footer
+    return full_script
+
+

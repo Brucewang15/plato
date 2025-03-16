@@ -58,7 +58,7 @@ async def retrieve_menu_items(instance, start_url: str) -> list[dict]:
         for i in range(scroll_steps):
             await page.evaluate("window.scrollBy(0, 200)")
             await page.wait_for_timeout(500)
-            # await page.screenshot(path=f"./screenshots/scroll_screenshot_{i}.png") 
+            await page.screenshot(path=f"./screenshots/scroll_screenshot_{i}.png") 
 
             current_items = await page.query_selector_all('div[data-anchor-id="MenuItem"]')
             print(f"Iteration {i+1}: found {len(current_items)} menu items on page")
@@ -76,7 +76,7 @@ async def retrieve_menu_items(instance, start_url: str) -> list[dict]:
                         await item.click()
                         request = await request_info.value
                         
-                        # await page.screenshot(path=f"./click_screenshots/clicked_screenshot_{item_id}.png")
+                        await page.screenshot(path=f"./click_screenshots/clicked_screenshot_{item_id}.png")
                         print(f"Clicked item {item_id}")
 
                         if request.response:
