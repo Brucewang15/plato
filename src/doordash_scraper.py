@@ -92,7 +92,7 @@ async def retrieve_menu_items(instance, start_url: str) -> list[dict]:
 
                         if close_button:
                             await close_button.click()
-                            await page.wait_for_timeout(500)
+                            await page.wait_for_timeout(300)
                             print("Closed item details")
 
                 except Exception as e:
@@ -101,7 +101,7 @@ async def retrieve_menu_items(instance, start_url: str) -> list[dict]:
                         close_button = await page.query_selector("button[aria-label*='Close']")
                         if close_button:
                             await close_button.click()
-                            await page.wait_for_timeout(500)
+                            await page.wait_for_timeout(300)
                     except:
                         pass
 
