@@ -107,7 +107,7 @@ async def perform_automation(instance, start_url: str):
     
     # Footer: Closing automation, main function and entry point.
     footer = '''
-        await browser.close()
+await browser.close()
 
 async def main():
     print("Starting automation...")
